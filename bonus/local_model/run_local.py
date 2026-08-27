@@ -10,6 +10,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 
 def main() -> int:
+    # This bonus is explicitly a PyTorch CPU benchmark.  Prevent an optional
+    # TensorFlow/sklearn installation from being imported by transformers;
+    # mixed NumPy ABI versions are common in teaching environments.
+    os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+    os.environ.setdefault("USE_TF", "0")
     try:
         import torch  # noqa: F401
         from transformers import AutoModelForCausalLM, AutoTokenizer

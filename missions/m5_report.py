@@ -50,9 +50,18 @@ def run(verbose: bool = True) -> dict:
         "wh_per_query": wh,
         "carbon_g": sustainability.carbon_g(wh, "us-east-1"),
         "best_region": min(sustainability.REGION_CARBON, key=sustainability.REGION_CARBON.get),
+        "energy_cost_usd": sustainability.energy_cost_usd(wh, "us-east-1"),
     }
 
-    md = report.build_report(baseline, optimized, levers, sustainability=sust)
+    reasoning_share = r2["reasoning_cost"] / r2["optimized_daily"] * 100 if r2["optimized_daily"] else 0
+    analysis = {"lines": [
+        f"- **GPU-Util lie:** `{', '.join(l['gpu_id'] for l in r1['lies'])}` reports high clock activity but low MFU; memory stalls, synchronization, or kernel-launch overhead can keep the SMs busy without delivering proportional FLOPs. The direct response is profiling and right-sizing, not trusting `nvidia-smi` utilization alone.",
+        f"- **Cache economics:** caching is enabled because the estimated {4.0:.1f} reads/prefix exceeds the {r2['cache_break_even_reads']:.2f} read break-even. This contributes to the optimized ${r2['optimized_daily']:,.2f}/day inference bill.",
+        f"- **Reasoning budget:** reasoning is {r2['reasoning_traffic_pct']:.1f}% of requests but ${r2['reasoning_cost']:,.2f}/day ({reasoning_share:.1f}% of optimized inference spend) and {r2['reasoning_wh']:,.0f} Wh/day. Route it only for low-confidence or high-complexity tasks; keep ordinary traffic on the small model.",
+        f"- **Priority actions:** (1) purchase spot/reserved capacity ({levers['Purchasing (spot/reserved)']:,} USD/month saved), (2) fix idle and util-lie GPUs ({levers['Kill idle GPUs'] + levers['Right-size util-lies']:,} USD/month), then (3) enforce inference routing/cache/batch policies ({levers['Inference (cascade/cache/batch)']:,} USD/month).",
+        f"- **Sustainability:** each non-reasoning median query uses {wh:.2f} Wh, costs about ${sust['energy_cost_usd']:.5f} in electricity, and emits {sust['carbon_g']:.3f} gCO2e in us-east-1. Moving flexible work to {sust['best_region']} reduces grid carbon intensity from {sustainability.REGION_CARBON['us-east-1']} to {sustainability.REGION_CARBON[sust['best_region']]} gCO2/kWh, subject to latency and data-residency constraints.",
+    ]}
+    md = report.build_report(baseline, optimized, levers, sustainability=sust, analysis=analysis)
     out_md = os.path.join(ROOT, "outputs", "report.md")
     os.makedirs(os.path.dirname(out_md), exist_ok=True)
     with open(out_md, "w") as f:
